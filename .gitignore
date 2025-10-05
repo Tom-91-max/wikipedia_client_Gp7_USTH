@@ -1,0 +1,57 @@
+# ---- Generic / IDE ----
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.history
+.svn/
+*.iml
+*.ipr
+*.iws
+.idea/
+# .vscode/  # (giữ lại nếu team muốn share launch.json/tasks)
+
+# ---- Flutter / Dart / Pub ----
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+# Với app Flutter: NÊN commit pubspec.lock để đồng bộ version giữa các máy
+# pubspec.lock
+
+# Docs / coverage
+**/doc/api/
+coverage/
+
+# Build outputs (mọi platform)
+build/
+**/build/
+
+# ---- Android ----
+android/.gradle/
+android/local.properties
+# app build variants (đã được **/build/ che phủ, giữ lại để chắc chắn)
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# Key stores (tuyệt đối không đẩy)
+*.keystore
+*.jks
+
+# ---- iOS / macOS ----
+ios/Flutter/.last_build_id
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Pods/
+macos/Pods/
+macos/Flutter/ephemeral/
+
+# ---- Windows / Linux ----
+windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+
+# ---- Symbolication / obfuscation (Android) ----
+app.*.symbols
+app.*.map.json

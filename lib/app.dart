@@ -1,0 +1,57 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import 'common/theme/app_theme.dart';
+import 'features/search/search_screen.dart';
+import 'features/article/article_screen.dart';
+import 'features/discovery/discovery_screen.dart';
+import 'features/saved/saved_screen.dart';
+import 'features/settings/settings_screen.dart';
+
+final _router = GoRouter(
+  initialLocation: '/search',
+  routes: [
+    GoRoute(
+      path: '/search',
+      name: 'search',
+      builder: (context, state) => const SearchScreen(),
+    ),
+    GoRoute(
+      path: '/article',
+      name: 'article',
+      builder: (context, state) => ArticleScreen(
+        title: state.uri.queryParameters['title'] ?? '',
+      ),
+    ),
+    GoRoute(
+      path: '/discovery',
+      name: 'discovery',
+      builder: (context, state) => const DiscoveryScreen(),
+    ),
+    GoRoute(
+      path: '/saved',
+      name: 'saved',
+      builder: (context, state) => const SavedScreen(),
+    ),
+    GoRoute(
+      path: '/settings',
+      name: 'settings',
+      builder: (context, state) => const SettingsScreen(),
+    ),
+  ],
+);
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp.router(
+      title: 'Wikipedia Client',
+      routerConfig: _router,
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.system,
+    );
+  }
+}
