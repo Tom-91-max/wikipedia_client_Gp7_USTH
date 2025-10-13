@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'common/theme/app_theme.dart';
+import 'common/providers/theme_provider.dart';
 import 'features/search/search_screen.dart';
 import 'features/article/article_screen.dart';
 import 'features/discovery/discovery_screen.dart';
@@ -41,17 +43,20 @@ final _router = GoRouter(
   ],
 );
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
+  
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+    
     return MaterialApp.router(
       title: 'Wikipedia Client',
       routerConfig: _router,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
     );
   }
 }

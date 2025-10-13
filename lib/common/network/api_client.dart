@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import '../services/settings_service.dart';
 
 /// ApiClient cấu hình Dio + Interceptor gắn User-Agent/Wikipedia JSON.
 class ApiClient {
@@ -6,9 +7,10 @@ class ApiClient {
   factory ApiClient() => _i;
 
   ApiClient._internal() {
+    _updateBaseUrl();
     _dio = Dio(
       BaseOptions(
-        baseUrl: 'https://en.wikipedia.org',
+        baseUrl: _baseUrl,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 15),
         headers: {
@@ -35,7 +37,19 @@ class ApiClient {
       'USTH-Group7-WikiClient/1.0 (contact@usth.edu.vn)';
 
   late Dio _dio;
+  String _baseUrl = 'https://en.wikipedia.org';
   Dio get dio => _dio;
+
+  void _updateBaseUrl() {
+    final language = SettingsService().wikipediaLanguage;
+    _baseUrl = 'https://$language.wikipedia.org';
+  }
+
+  /// Update base URL when language changes
+  void updateLanguage(String language) {
+    _baseUrl = 'https://$language.wikipedia.org';
+    _dio.options.baseUrl = _baseUrl;
+  }
 
   /// SEARCH (ổn định): MediaWiki Action API
   /// https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=...&format=json&srlimit=10

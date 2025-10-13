@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../common/network/api_client.dart';
+import '../../common/providers/language_provider.dart';
 import '../../common/widgets/app_error.dart';
 import '../../common/widgets/app_skeleton.dart';
 
-class ArticleScreen extends StatefulWidget {
+class ArticleScreen extends ConsumerStatefulWidget {
   final String title;
   const ArticleScreen({super.key, required this.title});
 
   @override
-  State<ArticleScreen> createState() => _ArticleScreenState();
+  ConsumerState<ArticleScreen> createState() => _ArticleScreenState();
 }
 
-class _ArticleScreenState extends State<ArticleScreen> {
+class _ArticleScreenState extends ConsumerState<ArticleScreen> {
   late final WebViewController _controller;
   bool _loading = true;
   String? _error;
@@ -49,8 +51,9 @@ class _ArticleScreenState extends State<ArticleScreen> {
       return;
     }
 
+    final language = ref.read(languageProvider);
     final url =
-        'https://en.m.wikipedia.org/api/rest_v1/page/mobile-html/${Uri.encodeComponent(widget.title)}';
+        'https://$language.m.wikipedia.org/api/rest_v1/page/mobile-html/${Uri.encodeComponent(widget.title)}';
 
     try {
       await _controller.loadRequest(

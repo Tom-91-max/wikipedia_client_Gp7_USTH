@@ -28,6 +28,9 @@ dependencies:
   # Skeleton effect (tùy chọn)
   shimmer: ^3.0.0
 
+  # Storage
+  shared_preferences: ^2.3.2
+  
   # (Dự phòng cho các nhiệm vụ sau)
   hive: ^2.2.3
   hive_flutter: ^1.1.0
