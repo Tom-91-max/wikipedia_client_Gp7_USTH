@@ -86,6 +86,7 @@ class _SearchScreenState extends State<SearchScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Search'),
+        automaticallyImplyLeading: false, // Hide back button on home screen
         actions: [
           IconButton(
             tooltip: 'Discovery',

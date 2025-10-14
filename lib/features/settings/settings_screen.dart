@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../common/providers/theme_provider.dart';
 import '../../common/providers/language_provider.dart';
+import '../../common/providers/app_language_provider.dart';
 import '../../common/services/settings_service.dart';
+import '../../common/widgets/app_back_button_handler.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -13,10 +15,18 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeProvider);
     final language = ref.watch(languageProvider);
+    final appLocale = ref.watch(appLanguageProvider);
 
-    return Scaffold(
+    return AppBackButtonHandler(
+      fallbackRoute: '/search',
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _handleBackPress(context),
+          tooltip: 'Back',
+        ),
         actions: [
           IconButton(
             onPressed: () => context.go('/search'),
@@ -64,38 +74,68 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           // Language Section
-          _buildSectionHeader(context, 'Wikipedia Language', Icons.language_outlined),
+          _buildSectionHeader(context, 'Language Settings', Icons.language_outlined),
           Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: ListTile(
-              leading: const Icon(Icons.public_outlined),
-              title: const Text('Wikipedia Domain'),
-              subtitle: Text('${language}.wikipedia.org'),
-              trailing: DropdownButton<String>(
-                value: language,
-                items: SettingsService.supportedLanguages.entries.map((entry) {
-                  return DropdownMenuItem<String>(
-                    value: entry.key,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('${entry.value} (${entry.key})'),
-                      ],
-                    ),
-                  );
-                }).toList(),
-                onChanged: (newLanguage) {
-                  if (newLanguage != null) {
-                    ref.read(languageProvider.notifier).setLanguage(newLanguage);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Language changed to ${SettingsService.supportedLanguages[newLanguage]}'),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                },
-              ),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.public_outlined),
+                  title: const Text('Wikipedia Domain'),
+                  subtitle: Text('${language}.wikipedia.org'),
+                  trailing: DropdownButton<String>(
+                    value: language,
+                    items: SettingsService.supportedLanguages.entries.map((entry) {
+                      return DropdownMenuItem<String>(
+                        value: entry.key,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('${entry.value} (${entry.key})'),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (newLanguage) {
+                      if (newLanguage != null) {
+                        ref.read(languageProvider.notifier).setLanguage(newLanguage);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Wikipedia language changed to ${SettingsService.supportedLanguages[newLanguage]}'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.translate_outlined),
+                  title: const Text('App Interface Language'),
+                  subtitle: Text('${SettingsService.appLanguages[appLocale.languageCode] ?? 'English'} (${appLocale.languageCode})'),
+                  trailing: DropdownButton<String>(
+                    value: appLocale.languageCode,
+                    items: SettingsService.appLanguages.entries.map((entry) {
+                      return DropdownMenuItem<String>(
+                        value: entry.key,
+                        child: Text('${entry.value} (${entry.key})'),
+                      );
+                    }).toList(),
+                    onChanged: (newLanguage) {
+                      if (newLanguage != null) {
+                        ref.read(appLanguageProvider.notifier).setLanguage(newLanguage);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('App language changed to ${SettingsService.appLanguages[newLanguage]}'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -147,6 +187,7 @@ class SettingsScreen extends ConsumerWidget {
 
           const SizedBox(height: 32),
         ],
+      ),
       ),
     );
   }
@@ -300,5 +341,13 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  void _handleBackPress(BuildContext context) {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/search');
+    }
   }
 }

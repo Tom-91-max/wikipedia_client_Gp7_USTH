@@ -8,6 +8,7 @@ class SettingsService {
 
   static const String _themeKey = 'theme_mode';
   static const String _languageKey = 'wikipedia_language';
+  static const String _appLanguageKey = 'app_language';
 
   late SharedPreferences _prefs;
 
@@ -53,6 +54,15 @@ class SettingsService {
     await _prefs.setString(_languageKey, language);
   }
 
+  // App Language
+  String get appLanguage {
+    return _prefs.getString(_appLanguageKey) ?? 'en';
+  }
+
+  Future<void> setAppLanguage(String language) async {
+    await _prefs.setString(_appLanguageKey, language);
+  }
+
   // Supported Wikipedia languages
   static const Map<String, String> supportedLanguages = {
     'en': 'English',
@@ -75,5 +85,13 @@ class SettingsService {
     'da': 'Dansk',
     'fi': 'Suomi',
     'pl': 'Polski',
+  };
+
+  // App UI Languages (for interface)
+  static const Map<String, String> appLanguages = {
+    'en': 'English',
+    'vi': 'Tiếng Việt',
+    'fr': 'Français',
+    'ja': '日本語',
   };
 }

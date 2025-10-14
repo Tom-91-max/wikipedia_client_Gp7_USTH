@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import 'common/theme/app_theme.dart';
 import 'common/providers/theme_provider.dart';
+import 'common/providers/app_language_provider.dart';
 import 'features/search/search_screen.dart';
 import 'features/article/article_screen.dart';
 import 'features/discovery/discovery_screen.dart';
 import 'features/saved/saved_screen.dart';
 import 'features/settings/settings_screen.dart';
+import 'l10n/app_localizations.dart';
 
 final _router = GoRouter(
   initialLocation: '/search',
@@ -49,6 +52,7 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeProvider);
+    final locale = ref.watch(appLanguageProvider);
     
     return MaterialApp.router(
       title: 'Wikipedia Client',
@@ -57,6 +61,17 @@ class MyApp extends ConsumerWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
+      locale: locale,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('en', ''), // English
+        Locale('vi', ''), // Vietnamese
+      ],
     );
   }
 }

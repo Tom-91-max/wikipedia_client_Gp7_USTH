@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../common/widgets/app_back_button_handler.dart';
 
 class DiscoveryScreen extends StatelessWidget {
   const DiscoveryScreen({super.key});
@@ -7,13 +8,21 @@ class DiscoveryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final today = DateTime.now();
-    return Scaffold(
+    return AppBackButtonHandler(
+      fallbackRoute: '/search',
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Discovery'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _handleBackPress(context),
+          tooltip: 'Back',
+        ),
         actions: [
           IconButton(
             onPressed: () => context.go('/search'),
             icon: const Icon(Icons.search),
+            tooltip: 'Search',
           ),
         ],
       ),
@@ -56,6 +65,15 @@ class DiscoveryScreen extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
+  }
+
+  void _handleBackPress(BuildContext context) {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/search');
+    }
   }
 }
