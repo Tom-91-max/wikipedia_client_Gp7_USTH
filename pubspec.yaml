@@ -10,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
 
+  dio_cache_interceptor: ^3.5.0
+
   # State management
   flutter_riverpod: ^2.5.1
 
@@ -31,7 +33,11 @@ dependencies:
   # (Dự phòng cho các nhiệm vụ sau)
   hive: ^2.2.3
   hive_flutter: ^1.1.0
- 
+  share_plus: ^12.0.0
+  webview_flutter_web: ^0.2.3+4
+  url_launcher: ^6.3.2
+  # nâng phiên bản flutter_html lên 3.x để tránh xung đột với webview_flutter ^4.x
+  flutter_html: ^3.0.0
 
 dev_dependencies:
   flutter_test:
