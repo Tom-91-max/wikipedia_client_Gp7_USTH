@@ -141,10 +141,11 @@ class AppLocalizationsVi extends AppLocalizations {
       'Tính năng đa ngôn ngữ ứng dụng sắp ra mắt!';
 
   @override
-  String get wikipediaLanguageChanged => 'Đã thay đổi ngôn ngữ Wikipedia thành';
+  String get wikipediaLanguageChanged =>
+      'Đã thay đổi ngôn ngữ Wikipedia tìm thấy lỗi? Hãy cho chúng tôi bihành';
 
   @override
-  String get foundBug => 'Tìm thấy lỗi? Hãy cho chúng tôi biết';
+  String get foundBug => 'Tết';
 
   @override
   String get contactDevTeam =>
