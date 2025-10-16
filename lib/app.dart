@@ -1,57 +1,119 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import 'common/theme/app_theme.dart';
+import 'common/providers/theme_provider.dart';
+import 'common/providers/app_language_provider.dart';
+
 import 'features/search/search_screen.dart';
 import 'features/article/article_screen.dart';
 import 'features/discovery/discovery_screen.dart';
 import 'features/saved/saved_screen.dart';
 import 'features/settings/settings_screen.dart';
+import 'features/history/history_screen.dart'; // <- thêm màn History
+import 'l10n/app_localizations.dart';
 
+/// Tên/đường dẫn route tập trung tại một chỗ
+class RouteNames {
+  static const search = 'search';
+  static const article = 'article';
+  static const discovery = 'discovery';
+  static const saved = 'saved';
+  static const history = 'history';
+  static const settings = 'settings';
+}
+
+class RoutePaths {
+  static const search = '/search';
+  static const article = '/article';
+  static const discovery = '/discovery';
+  static const saved = '/saved';
+  static const history = '/history';
+  static const settings = '/settings';
+
+  /// Helper build URL cho Article (truyền `title`)
+  static String articleWithTitle(String title) =>
+      '$article?title=${Uri.encodeQueryComponent(title)}';
+}
+
+/// GoRouter cấu hình chuẩn (có errorBuilder)
 final _router = GoRouter(
-  initialLocation: '/search',
+  initialLocation: RoutePaths.search,
   routes: [
     GoRoute(
-      path: '/search',
-      name: 'search',
+      path: RoutePaths.search,
+      name: RouteNames.search,
       builder: (context, state) => const SearchScreen(),
     ),
     GoRoute(
-      path: '/article',
-      name: 'article',
+      path: RoutePaths.article,
+      name: RouteNames.article,
       builder: (context, state) => ArticleScreen(
         title: state.uri.queryParameters['title'] ?? '',
       ),
     ),
     GoRoute(
-      path: '/discovery',
-      name: 'discovery',
+      path: RoutePaths.discovery,
+      name: RouteNames.discovery,
       builder: (context, state) => const DiscoveryScreen(),
     ),
     GoRoute(
-      path: '/saved',
-      name: 'saved',
+      path: RoutePaths.saved,
+      name: RouteNames.saved,
       builder: (context, state) => const SavedScreen(),
     ),
     GoRoute(
-      path: '/settings',
-      name: 'settings',
+      path: RoutePaths.history,
+      name: RouteNames.history,
+      builder: (context, state) => const HistoryScreen(),
+    ),
+    GoRoute(
+      path: RoutePaths.settings,
+      name: RouteNames.settings,
       builder: (context, state) => const SettingsScreen(),
     ),
   ],
+  errorBuilder: (context, state) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Route not found')),
+      body: Center(
+        child: Text(
+          state.error?.toString() ?? 'Unknown route',
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  },
 );
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
+    final locale = ref.watch(appLanguageProvider);
+
     return MaterialApp.router(
       title: 'Wikipedia Client',
       routerConfig: _router,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
+      locale: locale,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('en', ''), // English
+        Locale('vi', ''), // Vietnamese
+      ],
     );
   }
 }

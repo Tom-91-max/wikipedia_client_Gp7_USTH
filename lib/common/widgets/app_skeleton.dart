@@ -17,12 +17,12 @@ class AppSkeleton extends StatelessWidget {
     return Padding(
       padding: padding,
       child: Shimmer.fromColors(
-        baseColor: Theme.of(context).colorScheme.surfaceVariant,
+        baseColor: Theme.of(context).colorScheme.surfaceContainerHighest,
         highlightColor: Theme.of(context).colorScheme.surface,
         child: Container(
           height: height,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
           ),
         ),

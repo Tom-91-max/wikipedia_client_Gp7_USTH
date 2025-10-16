@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   # State management
   flutter_riverpod: ^2.5.1
@@ -19,27 +21,43 @@ dependencies:
   # HTTP
   dio: ^5.7.0
 
-  # WebView
+  # WebView (sử dụng loadHtmlString cho offline HTML)
   webview_flutter: ^4.8.0
 
-  # Image cache (sẽ dùng khi hiển thị thumb)
+  # Image cache (thumbnail/lead image)
   cached_network_image: ^3.4.1
 
-  # Skeleton effect (tùy chọn)
+  # Skeleton effect (tuỳ chọn)
   shimmer: ^3.0.0
 
-  # (Dự phòng cho các nhiệm vụ sau)
+  # Storage
+  shared_preferences: ^2.3.2
+
+  # Text to Speech
+  flutter_tts: ^4.0.2
+
+  # Local DB cho Offline/History/Cache
   hive: ^2.2.3
   hive_flutter: ^1.1.0
- 
+  path_provider: ^2.1.4        # bắt buộc cho Hive init trên mobile
+
+  # Hỗ trợ nhận biết online/offline để chọn nguồn dữ liệu
+  connectivity_plus: ^6.0.5
+
+  # Nếu cần xử lý HTML (tách summary, strip tags, v.v.)
+  html: ^0.15.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
 
+  # Tạo TypeAdapter cho Hive (Article, HistoryEntry, CacheMeta)
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.11
+
 flutter:
   uses-material-design: true
-  # Nếu bạn có asset, khai báo ở đây:
+  generate: true
   # assets:
   #   - assets/
