@@ -1,102 +1,3 @@
-// import 'package:dio/dio.dart';
-// import '../services/settings_service.dart';
-//
-// /// ApiClient cấu hình Dio + Interceptor gắn User-Agent/Wikipedia JSON.
-// class ApiClient {
-//   static final ApiClient _i = ApiClient._internal();
-//   factory ApiClient() => _i;
-//
-//   ApiClient._internal() {
-//     _updateBaseUrl();
-//     _dio = Dio(
-//       BaseOptions(
-//         baseUrl: _baseUrl,
-//         connectTimeout: const Duration(seconds: 10),
-//         receiveTimeout: const Duration(seconds: 15),
-//         headers: {
-//           'User-Agent': _userAgent,
-//           'Accept': 'application/json',
-//         },
-//       ),
-//     );
-//
-//     _dio.interceptors.add(
-//       InterceptorsWrapper(
-//         onRequest: (options, handler) {
-//           options.headers['User-Agent'] = _userAgent;
-//           return handler.next(options);
-//         },
-//         onError: (e, handler) {
-//           return handler.next(e);
-//         },
-//       ),
-//     );
-//   }
-//
-//   static const String _userAgent =
-//       'USTH-Group7-WikiClient/1.0 (contact@usth.edu.vn)';
-//
-//   late Dio _dio;
-//   String _baseUrl = 'https://en.wikipedia.org';
-//   Dio get dio => _dio;
-//
-//   void _updateBaseUrl() {
-//     final language = SettingsService().wikipediaLanguage;
-//     _baseUrl = 'https://$language.wikipedia.org';
-//   }
-//
-//   void updateLanguage(String language) {
-//     _baseUrl = 'https://$language.wikipedia.org';
-//     _dio.options.baseUrl = _baseUrl;
-//   }
-//
-//   /// SEARCH (Action API cũ)
-//   Future<Response<dynamic>> searchTitle(String query) {
-//     return _dio.get(
-//       '/w/api.php',
-//       queryParameters: {
-//         'action': 'query',
-//         'list': 'search',
-//         'srsearch': query,
-//         'srlimit': 10,
-//         'format': 'json',
-//         'origin': '*',
-//       },
-//     );
-//   }
-//
-//   /// 🔎 REST search/title (mới, hỗ trợ thumbnail + pagination)
-//   Future<Response<dynamic>> searchTitleRest(
-//       String query, {
-//         int limit = 20,
-//         int offset = 0,
-//         CancelToken? cancelToken,
-//       }) {
-//     return _dio.get(
-//       '/w/rest.php/v1/search/title',
-//       queryParameters: {
-//         'q': query,
-//         'limit': limit,
-//         'offset': offset,
-//       },
-//       cancelToken: cancelToken,
-//     );
-//   }
-//
-//   /// SUMMARY (REST)
-//   Future<Response<dynamic>> getSummary(String title) {
-//     final encoded = Uri.encodeComponent(title);
-//     return _dio.get('/api/rest_v1/page/summary/$encoded');
-//   }
-// }
-
-
-
-
-
-
-// lib/common/network/api_client.dart
-// lib/common/network/api_client.dart
 import 'package:dio/dio.dart';
 
 class ApiClient {
@@ -109,9 +10,12 @@ class ApiClient {
 
   late Dio _dio;
 
-  // Ngôn ngữ mặc định (khớp LanguageProvider của bạn nếu là 'en')
+  // Ngôn ngữ Wikipedia (phải khớp với languageProvider của bạn)
   String _langCode = 'en';
   String get baseUrl => 'https://$_langCode.wikipedia.org';
+
+  static const String _userAgent =
+      'USTH-Group7-WikiClient/1.0 (contact@usth.edu.vn)';
 
   void _createDio() {
     _dio = Dio(
@@ -120,12 +24,13 @@ class ApiClient {
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 20),
         headers: const {
-          'User-Agent': 'USTH-Group7-WikiClient/1.0 (contact@usth.edu.vn)',
+          'User-Agent': _userAgent,
           'Accept': 'application/json',
         },
       ),
     );
 
+    // Log nhẹ để debug (tắt body cho gọn)
     _dio.interceptors.add(
       LogInterceptor(
         requestBody: false,
@@ -136,16 +41,30 @@ class ApiClient {
     );
   }
 
-  /// Được LanguageProvider gọi để đổi ngôn ngữ (vi, en, fr...)
+  /// Gọi từ languageProvider khi người dùng đổi ngôn ngữ (vi, en, fr, ...)
   Future<void> updateLanguage(String languageCode) async {
     if (languageCode.isEmpty || languageCode == _langCode) return;
     _langCode = languageCode;
     _createDio(); // rebuild Dio với baseUrl mới
   }
 
-  /// GET tiện ích -> trả về data đã parse (dynamic/Map)
-  Future<dynamic> get(String path, {Map<String, dynamic>? queryParameters}) async {
-    final res = await _dio.get(path, queryParameters: queryParameters);
+  // --------------------------
+  // Helpers
+  // --------------------------
+  String _enc(String title) => Uri.encodeComponent(title);
+
+  Future<dynamic> get(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    CancelToken? cancelToken,
+  }) async {
+    final res = await _dio.get(
+      path,
+      queryParameters: queryParameters,
+      options: options,
+      cancelToken: cancelToken,
+    );
     if (res.statusCode != 200) {
       throw DioException(
         requestOptions: res.requestOptions,
@@ -157,11 +76,34 @@ class ApiClient {
     return res.data;
   }
 
-  /// SEARCH cho SearchScreen (nếu muốn dùng trực tiếp)
+  // --------------------------
+  // Search
+  // --------------------------
+
+  /// REST search/title (hỗ trợ thumbnail + pagination)
+  Future<Response<dynamic>> searchTitleRest(
+    String query, {
+    int limit = 20,
+    int offset = 0,
+    CancelToken? cancelToken,
+  }) {
+    return _dio.get(
+      '/w/rest.php/v1/search/title',
+      queryParameters: {
+        'q': query,
+        'limit': limit,
+        'offset': offset,
+      },
+      cancelToken: cancelToken,
+    );
+  }
+
+  /// Action API (generator=search) – nếu SearchScreen của bạn đang dùng dạng này
   Future<Map<String, dynamic>> searchRaw({
     required String query,
     required int limit,
     required int offset,
+    CancelToken? cancelToken,
   }) async {
     final params = <String, dynamic>{
       'action': 'query',
@@ -179,17 +121,19 @@ class ApiClient {
       'exsentences': '2',
       'redirects': '1',
     };
-    final data = await get('/w/api.php', queryParameters: params);
+    final data = await get('/w/api.php',
+        queryParameters: params, cancelToken: cancelToken);
     if (data is Map<String, dynamic>) return data;
     throw const FormatException('Unexpected API data');
   }
 
-  // =======================
-  //  QUAN TRỌNG CHO BẠN
-  //  Trả về Response để article_screen.dart dùng .data
-  // =======================
+  // --------------------------
+  // Page content APIs (REST)
+  // --------------------------
+
+  /// SUMMARY (REST) – dùng cho TTS/preview
   Future<Response<dynamic>> getSummary(String title) async {
-    final res = await _dio.get('/api/rest_v1/page/summary/$title');
+    final res = await _dio.get('/api/rest_v1/page/summary/${_enc(title)}');
     if (res.statusCode == 200) return res;
     throw DioException(
       requestOptions: res.requestOptions,
@@ -199,7 +143,7 @@ class ApiClient {
     );
   }
 
-  /// Nếu nơi nào đó thích nhận Map thay vì Response, dùng hàm này (tuỳ chọn)
+  /// SUMMARY tiện ích (Map) – nếu bạn thích dữ liệu parse sẵn
   Future<Map<String, dynamic>> getSummaryMap(String title) async {
     final res = await getSummary(title);
     final data = res.data;
@@ -207,10 +151,10 @@ class ApiClient {
     throw const FormatException('Unexpected summary data');
   }
 
-  /// Mobile HTML (full content) – ít khi article_screen cần vì đã load WebView trực tiếp
+  /// MOBILE HTML (full article) – dùng để lưu/offline
   Future<String> getMobileHtml(String title) async {
     final res = await _dio.get(
-      '/api/rest_v1/page/mobile-html/$title',
+      '/api/rest_v1/page/mobile-html/${_enc(title)}',
       options: Options(responseType: ResponseType.plain),
     );
     if (res.statusCode == 200) return res.data as String;
@@ -224,14 +168,14 @@ class ApiClient {
 
   /// Media list (mở rộng)
   Future<Map<String, dynamic>> getMediaList(String title) async {
-    final data = await get('/api/rest_v1/page/media-list/$title');
+    final data = await get('/api/rest_v1/page/media-list/${_enc(title)}');
     if (data is Map<String, dynamic>) return data;
     throw const FormatException('Unexpected media data');
   }
 
   /// Related articles (mở rộng)
   Future<Map<String, dynamic>> getRelated(String title) async {
-    final data = await get('/api/rest_v1/page/related/$title');
+    final data = await get('/api/rest_v1/page/related/${_enc(title)}');
     if (data is Map<String, dynamic>) return data;
     throw const FormatException('Unexpected related data');
   }
