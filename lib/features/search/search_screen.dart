@@ -29,8 +29,8 @@ class WikiArticle {
       title: json['title']?.toString() ?? '',
       description: json['extract']?.toString() ?? '',
       thumbnailUrl:
-          (json['thumbnail'] is Map ? json['thumbnail']['source'] : null)
-              ?.toString(),
+      (json['thumbnail'] is Map ? json['thumbnail']['source'] : null)
+          ?.toString(),
     );
   }
 }
@@ -186,7 +186,27 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Wikipedia Search')),
+      appBar: AppBar(
+        title: const Text('Wikipedia Search'),
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            tooltip: 'Discovery',
+            onPressed: () => context.go('/discovery'),
+            icon: const Icon(Icons.explore_outlined),
+          ),
+          IconButton(
+            tooltip: 'Saved',
+            onPressed: () => context.go('/saved'),
+            icon: const Icon(Icons.bookmark_border),
+          ),
+          IconButton(
+            tooltip: 'Settings',
+            onPressed: () => context.go('/settings'),
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -252,7 +272,11 @@ class _SearchScreenState extends State<SearchScreen> {
     // Lỗi
     if (_error != null) {
       return Center(
-          child: Text(_error!, style: const TextStyle(color: Colors.red)));
+        child: Text(
+          _error!,
+          style: const TextStyle(color: Colors.red),
+        ),
+      );
     }
 
     // ✅ TRẠNG THÁI RỖNG → HIỂN THỊ SAVED (10) + HISTORY (15)
@@ -322,9 +346,10 @@ class _SearchScreenState extends State<SearchScreen> {
                       color: Colors.grey[200],
                     ),
                     errorWidget: (context, url, error) => const SizedBox(
-                        width: 80,
-                        height: 80,
-                        child: Icon(Icons.image_not_supported)),
+                      width: 80,
+                      height: 80,
+                      child: Icon(Icons.image_not_supported),
+                    ),
                   ),
                 ),
               const SizedBox(width: 12),
@@ -332,9 +357,13 @@ class _SearchScreenState extends State<SearchScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(item.title,
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text(
+                      item.title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 4),
                     Text(
                       item.description.replaceAll(RegExp(r'<[^>]*>'), ''),
@@ -361,7 +390,10 @@ class _SearchScreenState extends State<SearchScreen> {
         itemBuilder: (context, index) => Card(
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Container(
-              height: 96, width: double.infinity, color: Colors.white),
+            height: 96,
+            width: double.infinity,
+            color: Colors.white,
+          ),
         ),
       ),
     );
