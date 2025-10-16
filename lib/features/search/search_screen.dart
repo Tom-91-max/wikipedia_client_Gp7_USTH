@@ -8,11 +8,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../common/network/api_client.dart';
 
-// Preview Saved & History
-import '../saved/widgets/saved_preview.dart';
-import '../history/widgets/history_preview.dart';
-
-// --- 1. MODEL DỮ LIỆU ---
 class WikiArticle {
   final String title;
   final String description;
@@ -29,13 +24,12 @@ class WikiArticle {
       title: json['title']?.toString() ?? '',
       description: json['extract']?.toString() ?? '',
       thumbnailUrl:
-      (json['thumbnail'] is Map ? json['thumbnail']['source'] : null)
-          ?.toString(),
+          (json['thumbnail'] is Map ? json['thumbnail']['source'] : null)
+              ?.toString(),
     );
   }
 }
 
-// --- 2. SEARCH SCREEN ---
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
 
@@ -47,7 +41,6 @@ class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   Timer? _debouncer;
-
   final _api = ApiClient();
 
   List<WikiArticle> _results = [];
@@ -57,7 +50,7 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _hasMore = true;
   String? _error;
 
-  // ✅ FIX rớt dấu: kiểm tra IME đang “composing” (gõ tiếng Việt) hay không
+  // Fix rớt dấu khi gõ TV: bỏ xử lý khi IME còn composing
   bool get _isComposing => _controller.value.isComposingRangeValid;
 
   @override
@@ -80,12 +73,9 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
-  // --- 3. LOGIC TÌM KIẾM ---
   void _onSearchChanged(String query) {
-    // ✅ FIX rớt dấu: bỏ qua khi IME đang ghép chữ (composing)
-    if (_isComposing) return;
-
-    if (_debouncer?.isActive ?? false) _debouncer!.cancel();
+    if (_isComposing) return; // đang gõ dấu -> đợi chốt
+    _debouncer?.cancel();
     _debouncer = Timer(const Duration(milliseconds: 300), () {
       if (_searchQuery.trim() != query.trim()) {
         _searchQuery = query.trim();
@@ -121,30 +111,22 @@ class _SearchScreenState extends State<SearchScreen> {
     try {
       final newItems = await _fetchPage(_page);
       setState(() {
-        if (newItems.length < 10) _hasMore = false; // size=10
+        if (newItems.length < 10) _hasMore = false; // page size = 10
         _results.addAll(newItems);
         _page++;
       });
     } on DioException catch (e) {
-      setState(() {
-        _error = 'Lỗi kết nối API: ${e.response?.statusCode ?? e.message}';
-      });
+      setState(() =>
+          _error = 'Lỗi kết nối API: ${e.response?.statusCode ?? e.message}');
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
+      setState(() => _error = e.toString());
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<List<WikiArticle>> _fetchPage(int page) async {
-    const int size = 10;
-
+    const size = 10;
     final queryParams = {
       'action': 'query',
       'format': 'json',
@@ -161,49 +143,44 @@ class _SearchScreenState extends State<SearchScreen> {
       'exsentences': '2',
       'redirects': '1',
     };
-
     final data = await _api.get('/w/api.php', queryParameters: queryParams);
-
-    if (data is Map<String, dynamic>) {
-      final pages = data['query']?['pages'];
-      if (pages == null) return [];
-      final List pagesList = (pages as Map).values.toList();
-
-      pagesList.sort((a, b) => (a['index'] ?? 0).compareTo(b['index'] ?? 0));
-
-      return pagesList
-          .map<WikiArticle>((p) => WikiArticle.fromJson(p))
-          .toList();
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Lỗi định dạng dữ liệu API');
     }
-    throw const FormatException('Lỗi định dạng dữ liệu API');
+    final pages = data['query']?['pages'];
+    if (pages == null) return [];
+    final List pagesList = (pages as Map).values.toList()
+      ..sort((a, b) => (a['index'] ?? 0).compareTo(b['index'] ?? 0));
+    return pagesList.map<WikiArticle>((p) => WikiArticle.fromJson(p)).toList();
   }
 
   void _navigateToArticle(String title) {
     context.goNamed('article', queryParameters: {'title': title});
   }
 
-  // --- 4. UI ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Wikipedia Search'),
-        automaticallyImplyLeading: false,
         actions: [
+          // 🔎 Discovery
           IconButton(
-            tooltip: 'Discovery',
-            onPressed: () => context.go('/discovery'),
             icon: const Icon(Icons.explore_outlined),
+            tooltip: 'Khám phá',
+            onPressed: () => context.go('/discovery'),
           ),
+          // ⚙️ Settings
           IconButton(
-            tooltip: 'Saved',
-            onPressed: () => context.go('/saved'),
-            icon: const Icon(Icons.bookmark_border),
-          ),
-          IconButton(
-            tooltip: 'Settings',
-            onPressed: () => context.go('/settings'),
             icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Cài đặt',
+            onPressed: () => context.go('/settings'),
+          ),
+          // 🔖 Saved (xem bài đã lưu)
+          IconButton(
+            icon: const Icon(Icons.bookmark_outline),
+            tooltip: 'Bài đã lưu',
+            onPressed: () => context.go('/saved'),
           ),
         ],
       ),
@@ -240,7 +217,6 @@ class _SearchScreenState extends State<SearchScreen> {
                       icon: const Icon(Icons.clear),
                       tooltip: 'Xóa',
                       onPressed: () {
-                        // ✅ FIX rớt dấu: xoá bằng TextEditingValue & clear composing
                         _controller.value = const TextEditingValue(
                           text: '',
                           selection: TextSelection.collapsed(offset: 0),
@@ -266,41 +242,22 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildResultsList() {
-    // Loading lần đầu
     if (_isLoading && _results.isEmpty) return _buildSkeletonLoader();
-
-    // Lỗi
     if (_error != null) {
       return Center(
-        child: Text(
-          _error!,
-          style: const TextStyle(color: Colors.red),
-        ),
+        child: Text(_error!, style: const TextStyle(color: Colors.red)),
       );
     }
 
-    // ✅ TRẠNG THÁI RỖNG → HIỂN THỊ SAVED (10) + HISTORY (15)
+    // Trang chủ: KHÔNG hiển thị History/Saved preview
     if (_results.isEmpty && _searchQuery.isEmpty) {
-      return ListView(
-        children: const [
-          SizedBox(height: 12),
-          SavedPreview(maxItems: 10),
-          HistoryPreview(maxItems: 15),
-          SizedBox(height: 24),
-          Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(child: Text('Bắt đầu tìm kiếm Wikipedia.')),
-          ),
-        ],
-      );
+      return const Center(child: Text('Bắt đầu tìm kiếm Wikipedia.'));
     }
 
-    // Không tìm thấy kết quả
     if (_results.isEmpty && _searchQuery.isNotEmpty) {
       return const Center(child: Text('Không tìm thấy kết quả nào.'));
     }
 
-    // Danh sách kết quả
     return ListView.builder(
       controller: _scrollController,
       itemCount: _results.length + (_hasMore ? 1 : 0),
@@ -380,7 +337,6 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // Skeleton (Shimmer)
   Widget _buildSkeletonLoader() {
     return Shimmer.fromColors(
       baseColor: Colors.grey[300]!,
