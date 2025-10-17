@@ -72,7 +72,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
     super.dispose();
   }
 
-  Future<void> _loadArticle() async {
+  Future<void> _loadArticle() async {  //Load nội dung bài viết chính
     if (widget.title.isEmpty) {
       if (!mounted) return;
       setState(() => _error = 'Missing title.');
@@ -121,7 +121,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
     }
   }
 
-  Future<void> _loadTOC() async {
+  Future<void> _loadTOC() async {//table of contents
     if (kIsWeb) return; 
 
     try {
@@ -199,12 +199,12 @@ class _ArticleScreenState extends State<ArticleScreen> {
     await Future.wait([_loadArticle(), _loadMedia(), _loadRelated()]);
   }
 
-  void _shareArticle() {
+  void _shareArticle() {//Share bài viết
     final url = 'https://en.wikipedia.org/wiki/${Uri.encodeComponent(widget.title)}';
     Share.share('Check out this Wikipedia article: $url', subject: widget.title);
   }
 
-  void _onHtmlLinkTap(String? url, Map<String, String> attributes, dom.Element? element) {
+  void _onHtmlLinkTap(String? url, Map<String, String> attributes, dom.Element? element) { //Xử lý click link trong HTML
     if (url == null) return;
     if (url.startsWith('#')) {
       final anchor = url.substring(1);
@@ -214,7 +214,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
     }
   }
 
-  void _scrollToSection(String anchor) {
+  void _scrollToSection(String anchor) { //Scroll đến section cụ thể
     if (kIsWeb) {
       final key = _sectionKeys[anchor];
       if (key != null && key.currentContext != null) {
@@ -242,7 +242,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
   }
 
 
-void _showTocBottomSheet() {
+void _showTocBottomSheet() { //nút TOC mobile
   if (_toc.isEmpty) return;
   showModalBottomSheet(
     context: context,
@@ -401,7 +401,7 @@ void _showTocBottomSheet() {
   );
 }
 
-  Widget _buildTocSidebar() {
+  Widget _buildTocSidebar() { //Xây dựng sidebar TOC cho web
     return Container(
       width: 250,
       color: Theme.of(context).scaffoldBackgroundColor,
