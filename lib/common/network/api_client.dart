@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:dio_cache_interceptor/dio_cache_interceptor.dart'; // Thêm dependency: dio_cache_interceptor: ^3.5.0
+import 'package:dio_cache_interceptor/dio_cache_interceptor.dart'; 
 
 class ApiClient {
   static final ApiClient _i = ApiClient._internal();
@@ -15,16 +15,15 @@ class ApiClient {
     _dio = Dio(
       BaseOptions(
         baseUrl: 'https://en.wikipedia.org',
-        connectTimeout: const Duration(seconds: 200), // Giảm timeout để nhanh hơn
+        connectTimeout: const Duration(seconds: 200), 
         receiveTimeout: const Duration(seconds: 150),
         headers: headers,
       ),
     );
 
-    // Thêm cache interceptor để cache response API (lưu 1 giờ)
     final cacheOptions = CacheOptions(
-      store: MemCacheStore(), // Hoặc HiveCacheStore() nếu add hive
-      policy: CachePolicy.refreshForceCache, // Refresh nhưng dùng cache nếu có
+      store: MemCacheStore(), 
+      policy: CachePolicy.refreshForceCache, 
       hitCacheOnErrorExcept: [401, 403],
       maxStale: const Duration(hours: 1),
     );
@@ -33,12 +32,11 @@ class ApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          // Luôn set Api-User-Agent (an toàn cho cả web và mobile)
           options.headers['Api-User-Agent'] = _userAgent;
           if (kIsWeb) {
-            options.headers.remove('User-Agent');  // Browser forbids custom User-Agent
+            options.headers.remove('User-Agent');  
           } else {
-            options.headers['User-Agent'] = _userAgent;  // Set cả User-Agent cho mobile
+            options.headers['User-Agent'] = _userAgent;  
           }
           return handler.next(options);
         },
