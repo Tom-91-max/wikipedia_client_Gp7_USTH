@@ -1,81 +1,47 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
+
+import '../../common/network/api_client.dart';
+import 'discovery_models.dart' as dm;
 import 'discovery_service.dart';
 
-// Service provider
+final _dioProvider = Provider<Dio>((ref) {
+  final base = ApiClient().baseUrl;
+  return Dio(BaseOptions(baseUrl: base));
+});
+
 final discoveryServiceProvider = Provider<DiscoveryService>((ref) {
-  final dio = Dio();
-  dio.options.headers['User-Agent'] = 'USTH-Group7-WikiClient/1.0 (contact@usth.edu.vn)';
-  // Add timeout and better error handling
-  dio.options.connectTimeout = const Duration(seconds: 10);
-  dio.options.receiveTimeout = const Duration(seconds: 10);
+  final dio = ref.watch(_dioProvider);
   return DiscoveryService(dio);
 });
 
-// Featured content provider - get only one featured article
-final featuredContentProvider = FutureProvider.autoDispose<FeaturedArticle?>((ref) async {
-  final discoveryService = ref.watch(discoveryServiceProvider);
-  try {
-    final data = await discoveryService.getFeaturedContent();
-    final featuredArticle = data['tfa'] as Map<String, dynamic>?; // tfa = today's featured article
-
-    if (featuredArticle != null) {
-      return FeaturedArticle.fromJson(featuredArticle);
-    }
-    return null;
-  } catch (e) {
-    throw Exception('Failed to load featured content');
+final featuredContentProvider =
+    FutureProvider.autoDispose<dm.FeaturedArticle?>((ref) async {
+  final svc = ref.watch(discoveryServiceProvider);
+  final data = await svc.getFeaturedContent();
+  final tfa = data['tfa'];
+  if (tfa is Map<String, dynamic>) {
+    return dm.FeaturedArticle.fromTfaJson(tfa);
   }
+  return null;
 });
 
-// Most viewed provider - returns raw JSON data instead of specific class
-final mostViewedProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final discoveryService = ref.watch(discoveryServiceProvider);
-  try {
-    final data = await discoveryService.getMostViewedArticles();
-    final items = data['items'] as List<dynamic>?;
-
-    if (items != null && items.isNotEmpty) {
-      final articles = items[0]['articles'] as List<dynamic>?;
-      if (articles != null && articles.isNotEmpty) {
-        return articles.take(5).map((article) => article as Map<String, dynamic>).toList();
-      }
-    }
-    // Return empty list if no real data available
-    return [];
-  } catch (e) {
-    // Return empty list on error
-    return [];
-  }
+final onThisDayProvider =
+    FutureProvider.autoDispose<List<dm.OnThisDayEvent>>((ref) async {
+  final svc = ref.watch(discoveryServiceProvider);
+  final data = await svc.getOnThisDayEvents();
+  final events = (data['events'] as List?) ?? const [];
+  return events
+      .whereType<Map>()
+      .map((e) =>
+          dm.OnThisDayEvent.fromJson(Map<String, dynamic>.from(e as Map)))
+      .take(3)
+      .toList();
 });
 
-// On this day provider - updated structure
-final onThisDayProvider = FutureProvider.autoDispose<List<OnThisDayEvent>>((ref) async {
-  final discoveryService = ref.watch(discoveryServiceProvider);
-  try {
-    final data = await discoveryService.getOnThisDayEvents();
-    final events = data['events'] as List<dynamic>?;
-
-    if (events != null) {
-      return events.take(3).map((event) => OnThisDayEvent.fromJson(event)).toList();
-    }
-    return [];
-  } catch (e) {
-    throw Exception('Failed to load on this day events');
-  }
-});
-
-final randomArticleProvider = FutureProvider.autoDispose<WikipediaPage?>((ref) async {
-  final discoveryService = ref.watch(discoveryServiceProvider);
-  try {
-    final data = await discoveryService.getRandomArticle();
-    return WikipediaPage(
-      title: data['title'] ?? 'No Title',
-      description: data['description'] ?? data['extract'],
-      thumbnailUrl: data['thumbnail']?['source'],
-      contentUrl: data['content_urls']?['desktop']?['page'] ?? '',
-    );
-  } catch (e) {
-    throw Exception('Failed to load random article');
-  }
+final randomArticleProvider =
+    FutureProvider.autoDispose<dm.WikipediaPage?>((ref) async {
+  final svc = ref.watch(discoveryServiceProvider);
+  final data = await svc.getRandomArticle();
+  return dm.WikipediaPage.fromSummaryJson(data);
 });

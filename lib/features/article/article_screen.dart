@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../common/network/api_client.dart';
 import '../../common/providers/language_provider.dart';
@@ -14,23 +16,21 @@ import '../../common/services/tts_service.dart';
 import '../../common/widgets/app_error.dart';
 import '../../common/widgets/app_skeleton.dart';
 
-/// Tên box (trùng với main.dart – nếu bạn đổi ở main.dart thì giữ đồng bộ ở đây)
 class _HiveBoxes {
-  static const articles = 'articles_box'; // lưu html + savedOffline + cachedAt
-  static const history = 'history_box'; // ghi lịch sử đọc
-  static const cache = 'cache_meta_box'; // dự phòng TTL/etag
+  static const articles = 'articles_box';
+  static const history = 'history_box';
+  static const cache = 'cache_meta_box';
 }
 
-/// Khoá lưu trữ: tách theo ngôn ngữ + title để tránh đè
 String _articleKey(String lang, String title) =>
     'article:$lang:${title.toLowerCase()}';
 
-/// TTL cache mặc định
 const Duration _defaultTtl = Duration(hours: 24);
 
 class ArticleScreen extends ConsumerStatefulWidget {
   final String title;
-  const ArticleScreen({super.key, required this.title});
+  final String? langOverride;
+  const ArticleScreen({super.key, required this.title, this.langOverride});
 
   @override
   ConsumerState<ArticleScreen> createState() => _ArticleScreenState();
@@ -42,9 +42,11 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
   String? _error;
   String? _articleSummary;
 
-  // trạng thái offline
   bool _fromOffline = false;
   bool _savedOffline = false;
+
+  List<Map<String, dynamic>> _sections = [];
+  bool get _hasTOC => _sections.isNotEmpty;
 
   @override
   void initState() {
@@ -54,10 +56,11 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageFinished: (_) {
+          onPageFinished: (_) async {
             if (!mounted) return;
             setState(() => _loading = false);
-            _addHistoryEntry(); // ghi lịch sử sau khi render
+            await _injectHelperJs();
+            _addHistoryEntry();
           },
           onWebResourceError: (err) {
             if (!mounted) return;
@@ -70,16 +73,16 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
   }
 
   Future<void> _bootstrap() async {
-    await _loadSavedFlag(); // biết có đang saved không
+    await _loadSavedFlag();
     await Future.wait([
       _loadSummary(),
-      _loadArticleSmart(), // ưu tiên offline rồi refresh online
+      _loadArticleSmart(),
+      _loadSections(),
     ]);
   }
 
-  /// Đọc cờ savedOffline từ Hive
   Future<void> _loadSavedFlag() async {
-    final lang = ref.read(languageProvider);
+    final String lang = (widget.langOverride ?? ref.read(languageProvider));
     final box = Hive.box(_HiveBoxes.articles);
     final key = _articleKey(lang, widget.title);
     final rec = box.get(key);
@@ -87,7 +90,6 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
     setState(() => _savedOffline = (rec?['savedOffline'] == true));
   }
 
-  /// Lấy summary để đọc TTS
   Future<void> _loadSummary() async {
     try {
       final res = await ApiClient().getSummary(widget.title);
@@ -96,14 +98,19 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
           _articleSummary = res.data?['extract']?.toString();
         });
       }
-    } catch (_) {
-      // bỏ qua lỗi summary
-    }
+    } catch (_) {}
   }
 
-  /// Chiến lược tải:
-  /// 1) Nếu có offline => loadHtmlString trước (mở nhanh)
-  /// 2) Nếu cache hết hạn hoặc chưa có => gọi online và cập nhật
+  Future<void> _loadSections() async {
+    try {
+      final sections = await ApiClient().getSections(widget.title);
+      if (!mounted) return;
+      setState(() {
+        _sections = sections;
+      });
+    } catch (_) {}
+  }
+
   Future<void> _loadArticleSmart() async {
     if (widget.title.isEmpty) {
       if (!mounted) return;
@@ -111,7 +118,7 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
       return;
     }
 
-    final lang = ref.read(languageProvider);
+    final String lang = (widget.langOverride ?? ref.read(languageProvider));
     final box = Hive.box(_HiveBoxes.articles);
     final key = _articleKey(lang, widget.title);
     final rec = box.get(key);
@@ -128,44 +135,31 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
 
       if (html != null && html.isNotEmpty) {
         _fromOffline = true;
-        // render bản offline trước
-        await _controller.loadHtmlString(html,
-            baseUrl: 'https://$lang.m.wikipedia.org');
+        await _controller.loadHtmlString(
+          _wrapHtml(html, lang: lang),
+          baseUrl: 'https://$lang.wikipedia.org',
+        );
         if (mounted) setState(() => _loading = false);
       }
 
-      // nếu cache cũ, làm mới nền
       if (!isFresh) {
         _refreshFromNetwork(lang, replaceView: !_fromOffline);
       }
     } else {
-      // không có offline => tải trực tiếp online
       _refreshFromNetwork(lang, replaceView: true);
     }
   }
 
-  /// Gọi REST mobile-html để lấy HTML thô và:
-  /// - render (nếu cần)
-  /// - lưu vào Hive (cache)
   Future<void> _refreshFromNetwork(String lang,
       {required bool replaceView}) async {
-    final url =
-        'https://$lang.m.wikipedia.org/api/rest_v1/page/mobile-html/${Uri.encodeComponent(widget.title)}';
     try {
-      final dio = Dio(BaseOptions(
-        headers: const {
-          'User-Agent': 'USTH-Group7-WikiClient/1.0 (contact@usth.edu.vn)',
-        },
-        responseType: ResponseType.plain, // nhận HTML string
-      ));
+      final html = await ApiClient().getParsedHtml(widget.title);
 
-      final res = await dio.get<String>(url);
-      final html = res.data ?? '';
-
-      // cập nhật view nếu đang xem bản rỗng/online
       if (replaceView) {
-        await _controller.loadHtmlString(html,
-            baseUrl: 'https://$lang.m.wikipedia.org');
+        await _controller.loadHtmlString(
+          _wrapHtml(html, lang: lang),
+          baseUrl: 'https://$lang.wikipedia.org',
+        );
         if (mounted) {
           setState(() {
             _fromOffline = false;
@@ -175,7 +169,6 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
         }
       }
 
-      // lưu cache (không mặc định đánh dấu savedOffline)
       final box = Hive.box(_HiveBoxes.articles);
       final key = _articleKey(lang, widget.title);
       final prev = box.get(key) as Map?;
@@ -183,7 +176,7 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
         'title': widget.title,
         'html': html,
         'summary': _articleSummary,
-        'savedOffline': prev?['savedOffline'] == true, // giữ trạng thái lưu
+        'savedOffline': prev?['savedOffline'] == true,
         'cachedAt': DateTime.now().toIso8601String(),
       });
     } catch (e) {
@@ -194,15 +187,13 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
     }
   }
 
-  /// Toggle lưu offline: nếu chưa lưu -> fetch HTML mới nhất & mark savedOffline = true
   Future<void> _toggleSaveOffline() async {
-    final lang = ref.read(languageProvider);
+    final String lang = (widget.langOverride ?? ref.read(languageProvider));
     final box = Hive.box(_HiveBoxes.articles);
     final key = _articleKey(lang, widget.title);
     final rec = (box.get(key) as Map?) ?? {};
 
     if (_savedOffline) {
-      // Gỡ lưu: giữ cache nhưng savedOffline=false
       await box.put(key, {
         ...rec,
         'savedOffline': false,
@@ -217,21 +208,10 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
       return;
     }
 
-    // Lưu: đảm bảo có HTML
     String? html = rec['html'] as String?;
     if (html == null || html.isEmpty) {
-      // fetch ngay để chắc chắn lưu được
-      final url =
-          'https://$lang.m.wikipedia.org/api/rest_v1/page/mobile-html/${Uri.encodeComponent(widget.title)}';
       try {
-        final dio = Dio(BaseOptions(
-          headers: const {
-            'User-Agent': 'USTH-Group7-WikiClient/1.0 (contact@usth.edu.vn)',
-          },
-          responseType: ResponseType.plain,
-        ));
-        final res = await dio.get<String>(url);
-        html = res.data ?? '';
+        html = await ApiClient().getParsedHtml(widget.title);
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -257,29 +237,27 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
     );
   }
 
-  /// Thêm entry History: {articleId(title), openedAt}
   Future<void> _addHistoryEntry() async {
     try {
-      final lang = ref.read(languageProvider);
+      final String lang = (widget.langOverride ?? ref.read(languageProvider));
       final key = _articleKey(lang, widget.title);
       final box = Hive.box(_HiveBoxes.history);
 
-      // Để đơn giản: push một record JSON; SavedScreen/HistoryScreen sẽ đọc và group theo ngày
       await box.add({
         'key': key,
         'title': widget.title,
         'lang': lang,
         'openedAt': DateTime.now().toIso8601String(),
       });
-    } catch (_) {
-      // ignore
-    }
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
     final title = widget.title.isEmpty ? 'Article' : widget.title;
-    final isPlaying = ref.watch(ttsProvider);
+    final isPlaying =
+        ref.watch(ttsProvider); // giữ nguyên, nhưng KHÔNG dùng nữa
+    final String lang = (widget.langOverride ?? ref.watch(languageProvider));
 
     return Scaffold(
       appBar: AppBar(
@@ -287,21 +265,24 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => _handleBackPress(context),
-          tooltip: 'Back',
         ),
         actions: [
-          // Lưu/Gỡ lưu offline
           IconButton(
             tooltip: _savedOffline ? 'Remove offline' : 'Save offline',
             icon: Icon(_savedOffline ? Icons.bookmark : Icons.bookmark_border),
             onPressed: _toggleSaveOffline,
           ),
-          if (_articleSummary != null)
+          if (_hasTOC)
             IconButton(
-              icon: Icon(isPlaying ? Icons.stop : Icons.play_arrow),
-              onPressed: () => _handleTTS(context, ref),
-              tooltip: isPlaying ? 'Stop reading' : 'Read aloud',
+              tooltip: 'Table of contents',
+              icon: const Icon(Icons.list),
+              onPressed: _showTocSheet,
             ),
+          IconButton(
+            tooltip: 'Share link',
+            icon: const Icon(Icons.share),
+            onPressed: () => _shareArticle(lang),
+          ),
         ],
       ),
       body: _error != null
@@ -311,15 +292,13 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
                 WebViewWidget(controller: _controller),
                 if (_loading)
                   const Positioned.fill(
-                    child: AppSkeleton(height: double.infinity),
-                  ),
+                      child: AppSkeleton(height: double.infinity)),
                 if (_fromOffline)
                   Positioned(
                     left: 16,
                     right: 16,
                     bottom: 16,
                     child: _OfflineBanner(onRefresh: () async {
-                      final lang = ref.read(languageProvider);
                       await _refreshFromNetwork(lang, replaceView: true);
                     }),
                   ),
@@ -351,7 +330,8 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
     if (ttsNotifier.isPlaying) {
       await ttsNotifier.stop();
     } else {
-      final language = ref.read(languageProvider);
+      final String language =
+          (widget.langOverride ?? ref.read(languageProvider));
       await TTSService().setLanguage(_getTTSLanguageCode(language));
 
       final cleanText = _articleSummary!
@@ -429,9 +409,123 @@ class _ArticleScreenState extends ConsumerState<ArticleScreen> {
       ),
     );
   }
+
+  void _showTocSheet() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text(
+                  'Table of contents',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _sections.length,
+                  itemBuilder: (_, i) {
+                    final s = _sections[i];
+                    final title = (s['line'] ?? '').toString();
+                    final anchor = (s['anchor'] ?? '').toString();
+                    final level = (s['toclevel'] ?? 1) as int;
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.only(
+                        left: 16.0 + (level - 1) * 16.0,
+                        right: 16,
+                      ),
+                      title: Text(title),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _scrollToAnchor(anchor);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _scrollToAnchor(String anchor) async {
+    final js = """
+      (function() {
+        var id = "$anchor";
+        var el = document.getElementById(id);
+        if (!el) {
+          var candidates = document.getElementsByClassName('mw-headline');
+          for (var i = 0; i < candidates.length; i++) {
+            if (candidates[i].id === id) { el = candidates[i]; break; }
+          }
+        }
+        if (el && el.scrollIntoView) { el.scrollIntoView({behavior: 'smooth', block: 'start'}); return true; }
+        return false;
+      })();
+    """;
+    try {
+      await _controller.runJavaScriptReturningResult(js);
+    } catch (_) {}
+  }
+
+  Future<void> _injectHelperJs() async {
+    const js = """
+      try {
+        var style = document.createElement('style');
+        style.innerHTML = `
+          body { padding: 12px !important; }
+          figure, table { max-width: 100%; overflow-x: auto; }
+          img { height: auto; max-width: 100%; }
+          @media (prefers-color-scheme: dark) {
+            body { background: #121212; color: #e0e0e0; }
+            a { color: #8ab4f8; }
+          }
+        `;
+        document.head.appendChild(style);
+      } catch (e) {}
+    """;
+    try {
+      await _controller.runJavaScript(js);
+    } catch (_) {}
+  }
+
+  Future<void> _shareArticle(String lang) async {
+    final url = ApiClient().buildArticleUrl(widget.title, lang: lang);
+    await Share.share(url, subject: widget.title);
+  }
+
+  String _wrapHtml(String rawHtml, {required String lang}) {
+    return """
+<!doctype html>
+<html lang="$lang">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${htmlEscape.convert(widget.title)}</title>
+<style>
+  body { font-family: -apple-system, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif; line-height: 1.5; }
+  img { max-width: 100%; height: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  .infobox, .thumb, .navbox { max-width: 100%; overflow-x: auto; }
+</style>
+</head>
+<body>
+$rawHtml
+</body>
+</html>
+""";
+  }
 }
 
-/// Banner hiển thị khi đang xem bản offline
 class _OfflineBanner extends StatelessWidget {
   final VoidCallback onRefresh;
   const _OfflineBanner({required this.onRefresh});
@@ -444,11 +538,11 @@ class _OfflineBanner extends StatelessWidget {
       child: InkWell(
         onTap: onRefresh,
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             mainAxisSize: MainAxisSize.min,
-            children: const [
+            children: [
               Icon(Icons.wifi_off, size: 18, color: Colors.white),
               SizedBox(width: 8),
               Flexible(

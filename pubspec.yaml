@@ -21,13 +21,13 @@ dependencies:
   # HTTP
   dio: ^5.7.0
 
-  # WebView (sử dụng loadHtmlString cho offline HTML)
+  # WebView 
   webview_flutter: ^4.8.0
 
-  # Image cache (thumbnail/lead image)
+  # Image cache 
   cached_network_image: ^3.4.1
 
-  # Skeleton effect (tuỳ chọn)
+  # Skeleton effect 
   shimmer: ^3.0.0
 
   # Storage
@@ -36,28 +36,31 @@ dependencies:
   # Text to Speech
   flutter_tts: ^4.0.2
 
-  # Local DB cho Offline/History/Cache
+  # Local DB for Offline/History/Cache
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  path_provider: ^2.1.4        # bắt buộc cho Hive init trên mobile
+  path_provider: ^2.1.4      
 
-  # Hỗ trợ nhận biết online/offline để chọn nguồn dữ liệu
+  # Support detecting online/offline status to select the data source
   connectivity_plus: ^6.0.5
 
-  # Nếu cần xử lý HTML (tách summary, strip tags, v.v.)
+  # Process HTML (extract summary, strip tags, etc.).
   html: ^0.15.4
+
+  # Share link + open article in browser
+  share_plus: ^12.0.0
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
 
-  # Tạo TypeAdapter cho Hive (Article, HistoryEntry, CacheMeta)
+  # Create TypeAdapter for Hive (Article, HistoryEntry, CacheMeta)
   hive_generator: ^2.0.1
   build_runner: ^2.4.11
 
 flutter:
   uses-material-design: true
   generate: true
-  # assets:
-  #   - assets/
+

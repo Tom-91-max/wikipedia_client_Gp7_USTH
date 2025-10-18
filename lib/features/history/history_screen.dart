@@ -1,5 +1,7 @@
+// lib/features/history/history_screen.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../common/widgets/app_back_button_handler.dart';
@@ -7,8 +9,12 @@ import '../../common/widgets/app_back_button_handler.dart';
 class HistoryScreen extends StatelessWidget {
   const HistoryScreen({super.key});
 
+  static const _historyBoxName = 'history_box';
+
   @override
   Widget build(BuildContext context) {
+    final box = Hive.box(_historyBoxName);
+
     return AppBackButtonHandler(
       fallbackRoute: '/search',
       child: Scaffold(
@@ -23,23 +29,21 @@ class HistoryScreen extends StatelessWidget {
             IconButton(
               tooltip: 'Clear all',
               icon: const Icon(Icons.delete_sweep_outlined),
-              onPressed: () => _confirmClearAll(context),
+              onPressed: () => _confirmClearAll(context, box),
             ),
           ],
         ),
         body: ValueListenableBuilder(
-          valueListenable: Hive.box('history_box').listenable(),
-          builder: (context, Box box, _) {
-            final items = _readHistory(box);
+          valueListenable: box.listenable(),
+          builder: (context, Box b, _) {
+            final items = _readHistory(b);
 
             if (items.isEmpty) {
-              return const Center(child: Text('No history yet'));
+              return _EmptyHistory(onGoSearch: () => context.go('/search'));
             }
 
-            // Group by yyyy-mm-dd
             final grouped = _groupByDate(items);
-            final dates = grouped.keys.toList()
-              ..sort((a, b) => b.compareTo(a)); // newest day first
+            final dates = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
 
             return ListView.builder(
               padding: const EdgeInsets.only(bottom: 12),
@@ -50,7 +54,7 @@ class HistoryScreen extends StatelessWidget {
                 return _HistorySection(
                   dateLabel: _prettyDate(dateKey),
                   entries: dayItems,
-                  onRemove: (entry) => _removeEntry(box, entry),
+                  onRemove: (entry) => _removeEntry(b, entry),
                 );
               },
             );
@@ -59,8 +63,6 @@ class HistoryScreen extends StatelessWidget {
       ),
     );
   }
-
-  // ───────────────── helpers ─────────────────
 
   void _handleBackPress(BuildContext context) {
     if (context.canPop()) {
@@ -71,7 +73,6 @@ class HistoryScreen extends StatelessWidget {
   }
 
   List<Map<String, dynamic>> _readHistory(Box box) {
-    // Normalize to Map<String,dynamic> & sort DESC by openedAt
     final list = box.values
         .where((e) => e is Map && e['title'] != null && e['openedAt'] != null)
         .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e as Map))
@@ -102,7 +103,6 @@ class HistoryScreen extends StatelessWidget {
   }
 
   String _prettyDate(String yyyymmdd) {
-    // yyy-mm-dd -> dd/MM/yyyy
     final parts = yyyymmdd.split('-');
     if (parts.length != 3) return yyyymmdd;
     final y = parts[0], m = parts[1], d = parts[2];
@@ -110,9 +110,7 @@ class HistoryScreen extends StatelessWidget {
   }
 
   Future<void> _removeEntry(Box box, Map<String, dynamic> entry) async {
-    // history_box là box.add({...}) → không biết key trực tiếp,
-    // ta tìm entry theo tất cả trường chính để xoá đúng dòng.
-    final targetKey = box.toMap().entries.firstWhere(
+    final target = box.toMap().entries.firstWhere(
       (kv) {
         final v = kv.value;
         return v is Map &&
@@ -121,15 +119,14 @@ class HistoryScreen extends StatelessWidget {
             v['lang'] == entry['lang'];
       },
       orElse: () => const MapEntry(null, null),
-    ).key;
-
-    if (targetKey != null) {
-      await box.delete(targetKey);
+    );
+    final key = target.key;
+    if (key != null) {
+      await box.delete(key);
     }
   }
 
-  Future<void> _confirmClearAll(BuildContext context) async {
-    final box = Hive.box('history_box');
+  Future<void> _confirmClearAll(BuildContext context, Box box) async {
     if (box.isEmpty) return;
 
     final yes = await showDialog<bool>(
@@ -204,6 +201,7 @@ class _HistoryTile extends StatelessWidget {
         DateTime(1970);
     final timeLabel =
         '${openedAt.hour.toString().padLeft(2, '0')}:${openedAt.minute.toString().padLeft(2, '0')}';
+    final lang = entry['lang']?.toString();
 
     return Dismissible(
       key: ValueKey('${entry['title']}-${entry['openedAt']}'),
@@ -220,7 +218,7 @@ class _HistoryTile extends StatelessWidget {
       },
       child: ListTile(
         title: Text(title),
-        subtitle: Text(timeLabel),
+        subtitle: Text(lang == null ? timeLabel : '$timeLabel • $lang'),
         leading: const Icon(Icons.history),
         trailing: IconButton(
           tooltip: 'Remove',
@@ -228,8 +226,40 @@ class _HistoryTile extends StatelessWidget {
           onPressed: () => onRemove(entry),
         ),
         onTap: () {
-          context.push('/article?title=${Uri.encodeComponent(title)}');
+          final qp = StringBuffer('title=${Uri.encodeComponent(title)}');
+          if (lang != null && lang.isNotEmpty) {
+            qp.write('&lang=$lang');
+          }
+          context.push('/article?$qp');
         },
+      ),
+    );
+  }
+}
+
+class _EmptyHistory extends StatelessWidget {
+  final VoidCallback onGoSearch;
+  const _EmptyHistory({required this.onGoSearch});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.history, size: 56, color: Colors.grey),
+            const SizedBox(height: 12),
+            const Text('No history yet'),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: onGoSearch,
+              icon: const Icon(Icons.search),
+              label: const Text('Go to Search'),
+            ),
+          ],
+        ),
       ),
     );
   }

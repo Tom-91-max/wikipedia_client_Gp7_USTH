@@ -1,10 +1,10 @@
-// lib/features/search/search_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../common/network/api_client.dart';
 
@@ -40,8 +40,10 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  Timer? _debouncer;
   final _api = ApiClient();
+
+  Timer? _debouncer;
+  CancelToken? _activeToken;
 
   List<WikiArticle> _results = [];
   String _searchQuery = '';
@@ -50,19 +52,20 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _hasMore = true;
   String? _error;
 
-  // Fix rớt dấu khi gõ TV: bỏ xử lý khi IME còn composing
+  // Recent
+  List<String> _recent = [];
+
+  bool _featuredLoading = false;
+  String? _featuredError;
+  _FeaturedToday? _featured;
   bool get _isComposing => _controller.value.isComposingRangeValid;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(() {
-      final nearBottom = _scrollController.position.pixels >=
-          _scrollController.position.maxScrollExtent - 200;
-      if (nearBottom && !_isLoading && _searchQuery.isNotEmpty && _hasMore) {
-        _search();
-      }
-    });
+    _scrollController.addListener(_onScroll);
+    _loadRecent();
+    _loadFeatured();
   }
 
   @override
@@ -70,22 +73,57 @@ class _SearchScreenState extends State<SearchScreen> {
     _controller.dispose();
     _scrollController.dispose();
     _debouncer?.cancel();
+    _activeToken?.cancel('dispose');
     super.dispose();
   }
 
+  Future<void> _loadRecent() async {
+    final pref = await SharedPreferences.getInstance();
+    _recent = pref.getStringList('recent_searches') ?? [];
+  }
+
+  Future<void> _pushRecent(String q) async {
+    if (q.trim().isEmpty) return;
+    final pref = await SharedPreferences.getInstance();
+    final list = pref.getStringList('recent_searches') ?? [];
+    list.removeWhere((e) => e.toLowerCase() == q.toLowerCase());
+    list.insert(0, q);
+    while (list.length > 30) list.removeLast();
+    await pref.setStringList('recent_searches', list);
+    _recent = list;
+  }
+
+  Future<void> _submitQuery(String q) async {
+    final trimmed = q.trim();
+    if (trimmed.isEmpty) return;
+    _controller.text = trimmed;
+    _searchQuery = trimmed;
+    await _pushRecent(trimmed);
+    await _search(reset: true);
+  }
+
+  void _onScroll() {
+    final nearBottom = _scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200;
+    if (nearBottom && !_isLoading && _searchQuery.isNotEmpty && _hasMore) {
+      _search();
+    }
+  }
+
   void _onSearchChanged(String query) {
-    if (_isComposing) return; // đang gõ dấu -> đợi chốt
+    if (_isComposing) return;
     _debouncer?.cancel();
     _debouncer = Timer(const Duration(milliseconds: 300), () {
-      if (_searchQuery.trim() != query.trim()) {
-        _searchQuery = query.trim();
+      final trimmed = query.trim();
+      if (_searchQuery != trimmed) {
+        _searchQuery = trimmed;
         _search(reset: true);
       }
     });
   }
 
   Future<void> _search({bool reset = false}) async {
-    if (_searchQuery.trim().isEmpty) {
+    if (_searchQuery.isEmpty) {
       if (reset) {
         setState(() {
           _results = [];
@@ -98,6 +136,9 @@ class _SearchScreenState extends State<SearchScreen> {
     }
     if (_isLoading || (!reset && !_hasMore)) return;
 
+    _activeToken?.cancel('new search');
+    _activeToken = CancelToken();
+
     setState(() {
       _isLoading = true;
       if (reset) {
@@ -109,23 +150,27 @@ class _SearchScreenState extends State<SearchScreen> {
     });
 
     try {
-      final newItems = await _fetchPage(_page);
+      final newItems = await _fetchPage(_page, _activeToken!);
+      if (!mounted) return;
       setState(() {
-        if (newItems.length < 10) _hasMore = false; // page size = 10
+        if (newItems.length < 10) _hasMore = false;
         _results.addAll(newItems);
         _page++;
       });
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) return;
+      if (!mounted) return;
       setState(() =>
           _error = 'Lỗi kết nối API: ${e.response?.statusCode ?? e.message}');
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<List<WikiArticle>> _fetchPage(int page) async {
+  Future<List<WikiArticle>> _fetchPage(int page, CancelToken token) async {
     const size = 10;
     final queryParams = {
       'action': 'query',
@@ -143,7 +188,8 @@ class _SearchScreenState extends State<SearchScreen> {
       'exsentences': '2',
       'redirects': '1',
     };
-    final data = await _api.get('/w/api.php', queryParameters: queryParams);
+    final data = await _api.get('/w/api.php',
+        queryParameters: queryParams, cancelToken: token);
     if (data is! Map<String, dynamic>) {
       throw const FormatException('Lỗi định dạng dữ liệu API');
     }
@@ -155,7 +201,81 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _navigateToArticle(String title) {
-    context.goNamed('article', queryParameters: {'title': title});
+    final lang = _api.langCode;
+    context.goNamed('article', queryParameters: {
+      'title': title,
+      'lang': lang,
+    });
+  }
+
+  Future<void> _loadFeatured() async {
+    setState(() {
+      _featuredLoading = true;
+      _featuredError = null;
+    });
+    try {
+      final now = DateTime.now();
+      final yyyy = now.year.toString().padLeft(4, '0');
+      final mm = now.month.toString().padLeft(2, '0');
+      final dd = now.day.toString().padLeft(2, '0');
+      final data = await _api.get('/api/rest_v1/feed/featured/$yyyy/$mm/$dd');
+
+      final tfa = _parseTFA(data);
+      final mostRead = _parseMostRead(data);
+
+      if (!mounted) return;
+      setState(() {
+        _featured = _FeaturedToday(tfa: tfa, mostRead: mostRead);
+        _featuredLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _featuredLoading = false;
+        _featuredError = 'Không tải được gợi ý hôm nay: $e';
+      });
+    }
+  }
+
+  _FeaturedItem? _parseTFA(dynamic data) {
+    try {
+      final tfa = data?['tfa'];
+      if (tfa == null) return null;
+      final title =
+          (tfa['titles']?['normalized'] ?? tfa['title'])?.toString() ?? '';
+      if (title.isEmpty) return null;
+      final desc =
+          (tfa['extract'] ?? tfa['description'] ?? '')?.toString() ?? '';
+      final thumb = (tfa['thumbnail'] is Map)
+          ? tfa['thumbnail']['source']?.toString()
+          : null;
+      return _FeaturedItem(title: title, description: desc, thumbnail: thumb);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<_FeaturedItem> _parseMostRead(dynamic data) {
+    try {
+      final arts = (data?['mostread']?['articles'] as List?) ?? const [];
+      return arts
+          .take(10)
+          .map<_FeaturedItem>((a) {
+            final title =
+                (a['titles']?['normalized'] ?? a['title'])?.toString() ?? '';
+            final desc =
+                (a['extract'] ?? a['description'] ?? '')?.toString() ?? '';
+            final thumb = (a['thumbnail'] is Map)
+                ? a['thumbnail']['source']?.toString()
+                : null;
+            return _FeaturedItem(
+                title: title, description: desc, thumbnail: thumb);
+          })
+          .where((e) => e.title.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   @override
@@ -164,23 +284,20 @@ class _SearchScreenState extends State<SearchScreen> {
       appBar: AppBar(
         title: const Text('Wikipedia Search'),
         actions: [
-          // 🔎 Discovery
           IconButton(
             icon: const Icon(Icons.explore_outlined),
             tooltip: 'Khám phá',
             onPressed: () => context.go('/discovery'),
           ),
-          // ⚙️ Settings
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Cài đặt',
-            onPressed: () => context.go('/settings'),
-          ),
-          // 🔖 Saved (xem bài đã lưu)
           IconButton(
             icon: const Icon(Icons.bookmark_outline),
             tooltip: 'Bài đã lưu',
             onPressed: () => context.go('/saved'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Cài đặt',
+            onPressed: () => context.go('/settings'),
           ),
         ],
       ),
@@ -226,22 +343,26 @@ class _SearchScreenState extends State<SearchScreen> {
                         setState(() {
                           _results = [];
                           _searchQuery = '';
+                          _hasMore = true;
+                          _error = null;
                         });
                       },
                     ),
                   ],
                 ),
               ),
-              onSubmitted: (_) => _search(reset: true),
+              onSubmitted: _submitQuery,
             ),
           ),
-          Expanded(child: _buildResultsList()),
+          Expanded(child: _buildResultsOrFeatured()),
         ],
       ),
     );
   }
 
-  Widget _buildResultsList() {
+  Widget _buildResultsOrFeatured() {
+    final nothingTyped = _results.isEmpty && _searchQuery.isEmpty;
+
     if (_isLoading && _results.isEmpty) return _buildSkeletonLoader();
     if (_error != null) {
       return Center(
@@ -249,9 +370,14 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
-    // Trang chủ: KHÔNG hiển thị History/Saved preview
-    if (_results.isEmpty && _searchQuery.isEmpty) {
-      return const Center(child: Text('Bắt đầu tìm kiếm Wikipedia.'));
+    if (nothingTyped) {
+      return _FeaturedHome(
+        data: _featured,
+        loading: _featuredLoading,
+        error: _featuredError,
+        onRetry: _loadFeatured,
+        onOpenArticle: _navigateToArticle,
+      );
     }
 
     if (_results.isEmpty && _searchQuery.isNotEmpty) {
@@ -351,6 +477,170 @@ class _SearchScreenState extends State<SearchScreen> {
             color: Colors.white,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FeaturedItem {
+  final String title;
+  final String description;
+  final String? thumbnail;
+  _FeaturedItem(
+      {required this.title, required this.description, this.thumbnail});
+}
+
+class _FeaturedToday {
+  final _FeaturedItem? tfa;
+  final List<_FeaturedItem> mostRead;
+  _FeaturedToday({this.tfa, required this.mostRead});
+}
+
+class _FeaturedHome extends StatelessWidget {
+  final _FeaturedToday? data;
+  final bool loading;
+  final String? error;
+  final VoidCallback onRetry;
+  final void Function(String title) onOpenArticle;
+
+  const _FeaturedHome({
+    required this.data,
+    required this.loading,
+    required this.error,
+    required this.onRetry,
+    required this.onOpenArticle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(error!),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Thử lại'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (data == null) {
+      return const Center(child: Text('Chưa có dữ liệu hôm nay.'));
+    }
+
+    final tfa = data!.tfa;
+    final most = data!.mostRead;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+      children: [
+        if (tfa != null) ...[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
+            child: Text('Bài viết chọn lọc hôm nay',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+          ),
+          _FeaturedCard(item: tfa, onTap: () => onOpenArticle(tfa.title)),
+          const SizedBox(height: 16),
+        ],
+        if (most.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
+            child: Text('Đọc nhiều nhất hôm nay',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+          ),
+          ...most.map((e) =>
+              _FeaturedListTile(item: e, onTap: () => onOpenArticle(e.title))),
+        ],
+        if (tfa == null && most.isEmpty)
+          const Center(child: Text('Không có gợi ý hiển thị.')),
+      ],
+    );
+  }
+}
+
+class _FeaturedCard extends StatelessWidget {
+  final _FeaturedItem item;
+  final VoidCallback onTap;
+  const _FeaturedCard({required this.item, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (item.thumbnail != null)
+              CachedNetworkImage(
+                imageUrl: item.thumbnail!,
+                width: 120,
+                height: 120,
+                fit: BoxFit.cover,
+              ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item.title,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 6),
+                    Text(
+                      item.description,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeaturedListTile extends StatelessWidget {
+  final _FeaturedItem item;
+  final VoidCallback onTap;
+  const _FeaturedListTile({required this.item, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      onTap: onTap,
+      leading: item.thumbnail != null
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: CachedNetworkImage(
+                imageUrl: item.thumbnail!,
+                width: 56,
+                height: 56,
+                fit: BoxFit.cover,
+              ),
+            )
+          : const Icon(Icons.article_outlined),
+      title:
+          Text(item.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(
+        item.description,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }

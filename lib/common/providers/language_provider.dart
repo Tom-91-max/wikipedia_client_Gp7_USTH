@@ -1,3 +1,4 @@
+// lib/common/providers/language_provider.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/settings_service.dart';
 import '../network/api_client.dart';
@@ -7,18 +8,27 @@ class LanguageNotifier extends StateNotifier<String> {
     _loadLanguage();
   }
 
-  final _settingsService = SettingsService();
-  final _apiClient = ApiClient();
+  final SettingsService _settingsService = SettingsService();
+  final ApiClient _apiClient = ApiClient();
 
   Future<void> _loadLanguage() async {
-    await _settingsService.init();
-    state = _settingsService.wikipediaLanguage;
+    try {
+      await _settingsService.init();
+      final saved = _settingsService.wikipediaLanguage;
+      state = saved;
+      await _apiClient.updateLanguage(saved);
+    } catch (_) {
+      state = 'en';
+      await _apiClient.updateLanguage('en');
+    }
   }
 
   Future<void> setLanguage(String language) async {
-    await _settingsService.setWikipediaLanguage(language);
-    _apiClient.updateLanguage(language);
-    state = language;
+    try {
+      await _settingsService.setWikipediaLanguage(language);
+      await _apiClient.updateLanguage(language);
+      state = language;
+    } catch (_) {}
   }
 }
 

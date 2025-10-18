@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
-/// Skeleton đơn giản dùng cho list item.
+/// Simple skeleton used for a list item.
 class AppSkeleton extends StatelessWidget {
   final double height;
   final EdgeInsetsGeometry padding;

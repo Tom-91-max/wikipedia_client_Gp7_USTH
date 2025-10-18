@@ -1,3 +1,4 @@
+// lib/app.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -12,10 +13,10 @@ import 'features/article/article_screen.dart';
 import 'features/discovery/discovery_screen.dart';
 import 'features/saved/saved_screen.dart';
 import 'features/settings/settings_screen.dart';
-import 'features/history/history_screen.dart'; // <- thêm màn History
+import 'features/history/history_screen.dart';
 import 'l10n/app_localizations.dart';
 
-/// Tên/đường dẫn route tập trung tại một chỗ
+/// Name/path of the route
 class RouteNames {
   static const search = 'search';
   static const article = 'article';
@@ -33,12 +34,17 @@ class RoutePaths {
   static const history = '/history';
   static const settings = '/settings';
 
-  /// Helper build URL cho Article (truyền `title`)
-  static String articleWithTitle(String title) =>
-      '$article?title=${Uri.encodeQueryComponent(title)}';
+  /// Helper to build URL for an article (pass title, optional lang)
+  static String articleWithTitle(String title, {String? lang}) {
+    final t = Uri.encodeQueryComponent(title);
+    final l = (lang == null || lang.isEmpty)
+        ? ''
+        : '&lang=${Uri.encodeQueryComponent(lang)}';
+    return '$article?title=$t$l';
+  }
 }
 
-/// GoRouter cấu hình chuẩn (có errorBuilder)
+/// Standard GoRouter configuration (with errorBuilder
 final _router = GoRouter(
   initialLocation: RoutePaths.search,
   routes: [
@@ -50,9 +56,17 @@ final _router = GoRouter(
     GoRoute(
       path: RoutePaths.article,
       name: RouteNames.article,
-      builder: (context, state) => ArticleScreen(
-        title: state.uri.queryParameters['title'] ?? '',
-      ),
+      builder: (context, state) {
+        final title = state.uri.queryParameters['title'];
+        final lang = state.uri.queryParameters['lang'];
+        if (title == null || title.trim().isEmpty) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Article')),
+            body: const Center(child: Text('Missing article title')),
+          );
+        }
+        return ArticleScreen(title: title, langOverride: lang);
+      },
     ),
     GoRoute(
       path: RoutePaths.discovery,
@@ -111,8 +125,8 @@ class MyApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('en', ''), // English
-        Locale('vi', ''), // Vietnamese
+        Locale('en', ''),
+        Locale('vi', ''),
       ],
     );
   }

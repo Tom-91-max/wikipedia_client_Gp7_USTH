@@ -1,3 +1,6 @@
+// lib/main.dart
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -5,38 +8,53 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'app.dart';
 import 'common/services/settings_service.dart';
 
-/// Tên các box dùng cho Offline / History / Cache
+/// Names of boxes used for Offline / History / Cache
 class HiveBoxes {
-  static const articles =
-      'articles_box'; // lưu bài đọc (HTML/summary/thumb + savedOffline)
-  static const history = 'history_box'; // lịch sử đọc
-  static const cache = 'cache_meta_box'; // TTL/etag nếu cần
+  static const articles = 'articles_box';
+  static const history = 'history_box';
+  static const cache = 'cache_meta_box';
+}
+
+class _ProviderLogger extends ProviderObserver {
+  @override
+  void didUpdateProvider(ProviderBase provider, Object? previousValue,
+      Object? newValue, ProviderContainer container) {
+    if (kDebugMode) {
+      debugPrint(
+          '[Provider] ${provider.name ?? provider.runtimeType} -> $newValue');
+    }
+    super.didUpdateProvider(provider, previousValue, newValue, container);
+  }
 }
 
 Future<void> _initLocalStorage() async {
-  // Khởi tạo Hive (dùng thư mục app documents)
   await Hive.initFlutter();
 
-  // TODO: khi thêm model + TypeAdapter, nhớ register ở đây.
-  // Ví dụ:
-  // Hive.registerAdapter(ArticleEntityAdapter());
-  // Hive.registerAdapter(HistoryEntityAdapter());
-  // Hive.registerAdapter(CacheMetaEntityAdapter());
-
-  // Mở các box cần dùng (dùng dynamic trước; sau sẽ chuyển sang typed)
-  await Hive.openBox(HiveBoxes.articles);
-  await Hive.openBox(HiveBoxes.history);
-  await Hive.openBox(HiveBoxes.cache);
+  try {
+    await Future.wait([
+      Hive.openBox(HiveBoxes.articles),
+      Hive.openBox(HiveBoxes.history),
+      Hive.openBox(HiveBoxes.cache),
+    ]);
+  } catch (e, st) {
+    debugPrint('Hive openBox error: $e\n$st');
+    rethrow;
+  }
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1) Settings (giữ nguyên app hiện tại)
-  await SettingsService().init();
-
-  // 2) Local DB cho Offline/History/Cache
-  await _initLocalStorage();
-
-  runApp(const ProviderScope(child: MyApp()));
+  await runZonedGuarded(() async {
+    await SettingsService().init();
+    await _initLocalStorage();
+    runApp(
+      ProviderScope(
+        observers: kDebugMode ? [_ProviderLogger()] : const [],
+        child: const MyApp(),
+      ),
+    );
+  }, (error, stack) {
+    debugPrint('Uncaught zone error: $error\n$stack');
+  });
 }

@@ -1,54 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import 'discovery_models.dart';
 import 'discovery_providers.dart';
-import 'discovery_service.dart';
 
 class OnThisDaySection extends ConsumerWidget {
   const OnThisDaySection({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final onThisDayAsync = ref.watch(onThisDayProvider);
-
-    return onThisDayAsync.when(
-      loading: () => _buildSkeleton(),
-      error: (error, stack) => _buildError(context, error.toString()),
-      data: (events) {
-        if (events.isEmpty) {
-          return _buildEmpty();
-        }
-        return _buildEventsList(context, events);
-      },
+    final async = ref.watch(onThisDayProvider);
+    return async.when(
+      loading: () => const _Skeleton(),
+      error: (e, _) => _ErrorTile(message: e.toString()),
+      data: (events) => _buildEventsList(context, events),
     );
   }
 
   Widget _buildEventsList(BuildContext context, List<OnThisDayEvent> events) {
     return Column(
-      children: events.map((event) => _buildEventCard(context, event)).toList(),
+      children: events.map((e) => _buildEventCard(context, e)).toList(),
     );
   }
 
   Widget _buildEventCard(BuildContext context, OnThisDayEvent event) {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              event.text,
-              style: Theme.of(context).textTheme.bodyMedium,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
+            Text('${event.year}',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    )),
+            const SizedBox(height: 6),
+            Text(event.text),
             if (event.pages.isNotEmpty) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               _buildRelatedPages(context, event.pages),
-            ],
+            ]
           ],
         ),
       ),
@@ -56,129 +50,64 @@ class OnThisDaySection extends ConsumerWidget {
   }
 
   Widget _buildRelatedPages(BuildContext context, List<WikipediaPage> pages) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Related Articles:',
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w600,
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: pages.map((page) {
+        return ActionChip(
+          label: Text(page.title, overflow: TextOverflow.ellipsis),
+          onPressed: () => context.push(
+            '/article?title=${Uri.encodeQueryComponent(page.title)}',
           ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: pages.take(3).map((page) {
-            return GestureDetector(
-              onTap: () {
-                _openArticle(context, page.title, page.contentUrl);
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  page.title,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ],
+        );
+      }).toList(),
     );
   }
+}
 
-  Widget _buildSkeleton() {
+class _Skeleton extends StatelessWidget {
+  const _Skeleton();
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
-      children: [
-        _buildSkeletonCard(),
-        const SizedBox(height: 12),
-        _buildSkeletonCard(),
+      children: const [
+        _SkeletonCard(),
+        SizedBox(height: 8),
+        _SkeletonCard(),
       ],
     );
   }
+}
 
-  Widget _buildSkeletonCard() {
+class _SkeletonCard extends StatelessWidget {
+  const _SkeletonCard();
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: const Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: 16,
-              child: LinearProgressIndicator(),
-            ),
-            SizedBox(height: 8),
-            SizedBox(
-              height: 16,
-              child: LinearProgressIndicator(),
-            ),
-            SizedBox(height: 8),
-            SizedBox(
-              height: 16,
-              child: LinearProgressIndicator(),
-            ),
-          ],
-        ),
-      ),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: const SizedBox(height: 120),
     );
   }
+}
 
-  Widget _buildError(BuildContext context, String error) {
+class _ErrorTile extends StatelessWidget {
+  final String message;
+  const _ErrorTile({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
+      color: Theme.of(context).colorScheme.errorContainer,
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Icon(
-              Icons.history_rounded,
-              size: 48,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Failed to load historical events',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
+        padding: const EdgeInsets.all(12),
+        child: Text(
+          message,
+          style:
+              TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
         ),
       ),
     );
-  }
-
-  Widget _buildEmpty() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Icon(
-              Icons.history_rounded,
-              size: 48,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'No historical events for today',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _openArticle(BuildContext context, String title, String contentUrl) {
-    // Navigate to article detail page
-    context.push('/article?title=${Uri.encodeComponent(title)}&url=${Uri.encodeComponent(contentUrl)}');
   }
 }

@@ -1,15 +1,21 @@
+// lib/features/settings/settings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../common/providers/theme_provider.dart';
 import '../../common/providers/language_provider.dart';
 import '../../common/providers/app_language_provider.dart';
 import '../../common/services/settings_service.dart';
 import '../../common/widgets/app_back_button_handler.dart';
+import '../../common/network/api_client.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
+
+  static const _articlesBox = 'articles_box';
+  static const _historyBox = 'history_box';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -37,7 +43,6 @@ class SettingsScreen extends ConsumerWidget {
         ),
         body: ListView(
           children: [
-            // Appearance
             _buildSectionHeader(context, 'Appearance', Icons.palette_outlined),
             Card(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -72,8 +77,6 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
             ),
-
-            // Language
             _buildSectionHeader(
                 context, 'Language Settings', Icons.language_outlined),
             Card(
@@ -83,34 +86,33 @@ class SettingsScreen extends ConsumerWidget {
                   ListTile(
                     leading: const Icon(Icons.public_outlined),
                     title: const Text('Wikipedia Domain'),
-                    subtitle: Text('${language}.wikipedia.org'),
+                    subtitle: Text('$language.wikipedia.org'),
                     trailing: DropdownButton<String>(
                       value: language,
                       items: SettingsService.supportedLanguages.entries
                           .map((entry) {
                         return DropdownMenuItem<String>(
                           value: entry.key,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('${entry.value} (${entry.key})'),
-                            ],
-                          ),
+                          child: Text('${entry.value} (${entry.key})'),
                         );
                       }).toList(),
-                      onChanged: (newLanguage) {
+                      onChanged: (newLanguage) async {
                         if (newLanguage != null) {
                           ref
                               .read(languageProvider.notifier)
                               .setLanguage(newLanguage);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Wikipedia language changed to ${SettingsService.supportedLanguages[newLanguage]}',
+                          await ApiClient().updateLanguage(newLanguage);
+
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Wikipedia language changed to ${SettingsService.supportedLanguages[newLanguage]}',
+                                ),
+                                duration: const Duration(seconds: 2),
                               ),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
+                            );
+                          }
                         }
                       },
                     ),
@@ -150,8 +152,6 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
             ),
-
-            // Reading (NEW): History entry
             _buildSectionHeader(context, 'Reading', Icons.history),
             Card(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -163,23 +163,62 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle:
                         const Text('See the articles you opened recently'),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () =>
-                        context.go('/history'), // 👉 navigate to History screen
+                    onTap: () => context.go('/history'),
                   ),
-                  // (Optional) quick access to Saved:
-                  // const Divider(height: 1),
-                  // ListTile(
-                  //   leading: const Icon(Icons.bookmark_outline),
-                  //   title: const Text('Saved Articles'),
-                  //   subtitle: const Text('Manage your offline saved articles'),
-                  //   trailing: const Icon(Icons.chevron_right),
-                  //   onTap: () => context.go('/saved'),
-                  // ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.bookmark_outline),
+                    title: const Text('Saved Articles'),
+                    subtitle: const Text('Manage your offline saved articles'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.go('/saved'),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.cleaning_services_outlined),
+                    title: const Text('Clear reading history'),
+                    subtitle: const Text('Remove all items from history'),
+                    onTap: () async => _confirmAndClear(
+                      context: context,
+                      title: 'Clear history?',
+                      body:
+                          'This will permanently remove your reading history. This action cannot be undone.',
+                      onConfirm: () async {
+                        await Hive.box(_historyBox).clear();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Reading history cleared')),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.delete_sweep_outlined),
+                    title: const Text('Clear cached articles'),
+                    subtitle:
+                        const Text('Free up space by clearing HTML cache'),
+                    onTap: () async => _confirmAndClear(
+                      context: context,
+                      title: 'Clear cached articles?',
+                      body:
+                          'This will remove cached article HTML. Saved (offline) flags will also be removed.',
+                      onConfirm: () async {
+                        await Hive.box(_articlesBox).clear();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Article cache cleared')),
+                          );
+                        }
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
-
-            // Data & Privacy
             _buildSectionHeader(
                 context, 'Data & Privacy', Icons.security_outlined),
             Card(
@@ -202,8 +241,6 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
             ),
-
-            // Support
             _buildSectionHeader(context, 'Support', Icons.help_outline),
             Card(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -225,7 +262,6 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
             ),
-
             const SizedBox(height: 32),
           ],
         ),
@@ -375,6 +411,32 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmAndClear({
+    required BuildContext context,
+    required String title,
+    required String body,
+    required Future<void> Function() onConfirm,
+  }) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Clear')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await onConfirm();
+    }
   }
 
   void _handleBackPress(BuildContext context) {
